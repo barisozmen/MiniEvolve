@@ -1,4 +1,4 @@
-# RFC: AlphaEvolve Python Library Design
+# RFC: AlphaEvolve Python Library Design (AI Generated)
 
 **Author**: Peter Norvig  
 **Date**: July 10, 2025  
