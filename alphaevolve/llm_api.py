@@ -29,19 +29,16 @@ class MockLLMAPI:
         self.call_count += 1
 
         if self.response_type == "simple_diff":
-            # This is a very basic diff, assuming the input code contains "bubble_sort"
-            # and a "comparisons = 0" line.
-            # A more robust mock would parse the {code} block from the prompt.
-            return """<<<<<< SEARCH
-    comparisons = 0
+            # This search block MUST be an exact substring of initial_bubble_sort_code_for_e2e
+            search_block = """    comparisons = 0
     n = len(arr)
     for i in range(n):
         for j in range(0, n - i - 1):
             comparisons += 1
             if arr[j] > arr[j + 1]:
-                arr[j], arr[j + 1] = arr[j + 1], arr[j]
-=======
-    # Mock LLM change: A slightly different way to count (conceptual)
+                arr[j], arr[j + 1] = arr[j + 1], arr[j]""" # No trailing newline
+
+            replace_block = """    # Mock LLM change: A slightly different way to count (conceptual)
     comparisons = 0
     n = len(arr)
     # Example: Introduce a small change for testing diff application
@@ -51,11 +48,15 @@ class MockLLMAPI:
             comparisons += 1
             if arr[j] > arr[j+1]:
                 arr[j], arr[j+1] = arr[j+1], arr[j]
-    # Note: This mock diff might break the sort logic, for testing evaluation of bad changes.
+    # Note: This mock diff might break the sort logic, for testing evaluation of bad changes.""" # No trailing newline
+
+            return f"""<<<<<< SEARCH
+{search_block}
+=======
+{replace_block}
 >>>>>> REPLACE
 """
         elif self.response_type == "no_change":
-            # Returns a diff that effectively changes nothing or an empty diff
              return """<<<<<< SEARCH
 # NonExistentBlock
 =======
@@ -63,7 +64,6 @@ class MockLLMAPI:
 >>>>>> REPLACE
 """
         elif self.response_type == "full_replace_example":
-            # Example of returning a completely new function body, no diff markers
             return """
 def totally_new_sort(arr):
     # This is a completely different implementation
@@ -76,9 +76,9 @@ def totally_new_sort(arr):
     return sorted(arr), new_comparisons # Returns a correctly sorted array
 """
         elif self.response_type == "empty_diff":
-            return "" # Simulates LLM returning empty content
+            return ""
 
-        return "" # Default fallback
+        return ""
 
 # Example of how a real API client might look (conceptual)
 # class GeminiAPI:

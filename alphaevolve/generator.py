@@ -37,30 +37,50 @@ class CodeGenerator:
         If the diff format is not found, or SEARCH block not in code, returns original code.
         """
         try:
+            # Normalize line endings for robustness, as LLM output or code input might vary.
+            code_normalized = code.replace('\r\n', '\n')
+            diff_normalized = diff.replace('\r\n', '\n')
+
             # Using re.DOTALL to make '.' match newlines as well
-            match = re.search(r'<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>> REPLACE', diff, re.DOTALL)
+            match = re.search(r'<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>> REPLACE', diff_normalized, re.DOTALL)
             if not match:
                 # If the diff format is not found, assume the LLM might have returned full code.
                 # This is a heuristic. For stricter control, one might want to return `code` or raise an error.
                 # Per RFC: "Full code replacement (for small programs)."
                 # We can refine this logic: if diff is substantially different from `code` and doesn't have markers,
                 # it might be a full replacement. For now, if no markers, and diff is non-empty, assume it's new code.
-                if diff and diff.strip(): # Check if diff is not empty or just whitespace
-                    return diff
-                return code # Return original code if diff is empty or markers not found
+                if diff_normalized and diff_normalized.strip(): # Check if diff is not empty or just whitespace
+                    # If it's full replacement, return the normalized diff content
+                    return diff_normalized
+                return code_normalized # Return original normalized code if diff is empty or markers not found
 
-            old_code, new_code = match.groups()
+            old_code_block, new_code_block = match.groups()
 
-            # Ensure leading/trailing newlines in search/replace blocks are handled consistently.
-            # The RFC example implies exact block matching.
-            # If old_code is not found, it might be due to subtle LLM changes (e.g. whitespace).
-            # Current implementation: exact match required.
-            if old_code in code:
-                return code.replace(old_code, new_code)
-            else:
-                # If the specific SEARCH block isn't found, return original code.
-                # This prevents accidental corruption if the LLM hallucinates a non-existent block.
-                return code
-        except Exception:
-            # Fallback to original code in case of any error during diff application.
-            return code
+            # Captured blocks from regex on normalized diff will also have normalized newlines.
+            # No further .replace('\r\n', '\n') needed on old_code_block/new_code_block here.
+
+            # First, try a direct match using normalized code and blocks
+            if old_code_block in code_normalized:
+                return code_normalized.replace(old_code_block, new_code_block)
+
+            # If direct match fails, try stripping leading/trailing newlines from the captured old_code_block.
+            # This can help if the regex captures an extra newline at the start/end of the SEARCH block
+            # or if the code string has slightly different whitespace there.
+            stripped_old_code_block = old_code_block.strip('\r\n')
+
+            # Check if stripping had an effect and if the stripped version matches
+            if stripped_old_code_block != old_code_block and stripped_old_code_block in code_normalized:
+                # If using stripped old block, also use stripped new block for consistency in replacement
+                stripped_new_code_block = new_code_block.strip('\r\n')
+                return code_normalized.replace(stripped_old_code_block, stripped_new_code_block)
+
+            # If neither exact nor stripped old_code is found, return original (normalized) code.
+            # This prevents accidental corruption if the LLM hallucinates a non-existent block
+            # or if the diff format is subtly mismatched.
+            # Optionally, log a warning here: print(f"DEBUG: old_code_block ('{old_code_block[:50]}...') not found in code_normalized.")
+            # Ensure to return code_normalized if all attempts fail and it's not the debug case
+            return code_normalized # Ensure this is outside the debug block or handled after.
+        except Exception: # pylint: disable=broad-except
+            # Fallback to original code (or its normalized version if available) in case of any error.
+            # Optionally, log the exception here.
+            return code.replace('\r\n', '\n') # Ensure returned code is also normalized
