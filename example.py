@@ -1,5 +1,5 @@
 import asyncio
-from alphaevolve import AlphaEvolve, Task, MockLLMAPI # Correctly import MockLLMAPI
+from alphaevolve import AlphaEvolve, Task, MockLLMAPI, GeminiAPI, LLMMetricsCollector # Correctly import MockLLMAPI
 
 def evaluate_sorting(code_str: str, test_cases: list) -> float:
     """
@@ -78,15 +78,21 @@ sort_task = Task(
     metadata={"task_description": "Optimize a Python sorting function to minimize comparisons."}
 )
 
+metrics = LLMMetricsCollector()
+
 async def main():
     print("Starting AlphaEvolve optimization for sorting...")
 
     # Initialize AlphaEvolve with the MockLLMAPI for testing
     # Using a small number of iterations and population for quick test
     evolver = AlphaEvolve(
-        llm_api=MockLLMAPI(response_type="simple_diff", delay_seconds=0.05), # Use the mock
-        max_iterations=10,       # Reduced for quick example run
-        population_size=5,       # Reduced for quick example run
+        # Use MockLLMAPI for testing, or GeminiAPI for real LLM calls.
+        # llm_api=MockLLMAPI(response_type="simple_diff", delay_seconds=0.05),
+        llm_api=GeminiAPI(
+            metrics_collector=metrics
+        ),
+        max_iterations=3,       # Reduced for quick example run
+        population_size=3,       # Reduced for quick example run
         num_candidates_to_sample=2 # How many codes to mutate each iteration
     )
 
@@ -103,6 +109,14 @@ async def main():
     print("\nInitial code for reference:")
     initial_eval = evaluate_sorting(initial_bubble_sort_code, default_test_cases)
     print(f"({initial_eval} comparisons):\n{initial_bubble_sort_code}")
+    
+    print(f"Average latency: {metrics.get_average_latency():.2f}s")
+    print(f"Success rate: {metrics.get_success_rate():.2f}")
+    print(f"Token stats: {metrics.get_token_stats()}")
+    
+    print(f"Metrics: {metrics.get_metrics()}")
+    
+    pass
 
 if __name__ == "__main__":
     asyncio.run(main())

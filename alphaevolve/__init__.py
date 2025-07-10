@@ -18,5 +18,15 @@ __all__ = [
     "EvolutionDB",
     "AlphaEvolve",
     "MockLLMAPI",
+    "GeminiAPI",
 ]
-from .llm_api import MockLLMAPI
+from .llm_api import MockLLMAPI, GeminiAPI
+from .monitoring import LLMMetricsCollector, MetricsCollector, LLMCallMetrics
+
+__all__ = [
+    "MockLLMAPI",
+    "GeminiAPI",
+    "LLMMetricsCollector",
+    "MetricsCollector",
+    "LLMCallMetrics",
+]

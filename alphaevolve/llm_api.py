@@ -1,4 +1,10 @@
 import asyncio
+import google.generativeai as genai
+from tenacity import retry, wait_random_exponential, stop_after_attempt
+from typing import Optional
+
+from decouple import config
+from .monitoring import LLMMetricsCollector
 
 class MockLLMAPI:
     """
@@ -80,21 +86,63 @@ def totally_new_sort(arr):
 
         return ""
 
-# Example of how a real API client might look (conceptual)
-# class GeminiAPI:
-#     def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash"):
-#         self.api_key = api_key
-#         self.model_name = model_name
-#         # Initialize the actual Gemini client here
-#         # from google.cloud import aiplatform
-#         # from google.generativeai import GenerativeModel
+class GeminiAPI:
+    """
+    Async Gemini LLM API client using google-generativeai.
+    Usage:
+        metrics = LLMMetricsCollector()
+        api = GeminiAPI(api_key="YOUR_API_KEY", metrics_collector=metrics)
+        response = await api.call("Your prompt here")
+        print(f"Average latency: {metrics.get_average_latency():.2f}s")
+    """
+    def __init__(
+        self, 
+        api_key: str = None, 
+        model_name: str = "models/gemini-2.0-flash-lite", 
+        location: str = "us-central1",
+        metrics_collector: Optional[LLMMetricsCollector] = None
+    ):
+        self.api_key = api_key if api_key else config("GEMINI_API_KEY")
+        self.model_name = model_name
+        self.location = location
+        self.metrics = metrics_collector or LLMMetricsCollector()
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel(model_name)
 
-#     async def call(self, prompt: str) -> str:
-#         # Actual call to Gemini API
-#         # model = GenerativeModel(self.model_name)
-#         # response = await model.generate_content_async(prompt)
-#         # return response.text
-#         pass # Placeholder
+    @retry(wait=wait_random_exponential(multiplier=1, max=60), stop=stop_after_attempt(3))
+    async def call(self, prompt: str) -> str:
+        """
+        Calls Gemini asynchronously and returns the text response.
+        Args:
+            prompt: The input prompt string.
+        Returns:
+            The LLM's text response as a string.
+        Raises:
+            Exception if the API call fails after retries.
+        """
+        async with self.metrics.track_call(self.model_name) as metrics:
+            try:
+                response = await self.model.generate_content_async(
+                    [prompt],
+                    generation_config={
+                        "max_output_tokens": 8192,
+                        "temperature": 1.0,
+                        "top_p": 0.95,
+                    },
+                    stream=False,
+                )
+                
+                # Update token metrics if available
+                if hasattr(response, "usage"):
+                    metrics.prompt_tokens = response.usage.prompt_tokens
+                    metrics.completion_tokens = response.usage.completion_tokens
+                    metrics.total_tokens = response.usage.total_tokens
+                
+                return response.text
+                
+            except Exception as e:
+                metrics.error = str(e)
+                raise
 
 # To make this usable, we should also update alphaevolve/__init__.py
 # to export MockLLMAPI.
